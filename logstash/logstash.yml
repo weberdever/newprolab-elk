@@ -1,0 +1,6 @@
+http.host: 0.0.0.0
+xpack.monitoring.elasticsearch.url: http://172.20.18.2:9200
+xpack.monitoring.enabled: true
+
+queue.type: persisted
+config.reload.automatic: true

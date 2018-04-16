@@ -1,0 +1,109 @@
+version: '3'
+services:
+  elastic_1:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.2.3
+    environment:
+     - cluster.name=es_newprolab
+     - discovery.zen.minimum_master_nodes=1
+    volumes:
+     - ./elasticsearch/log4j2.properties:/usr/share/elasticsearch/config/log4j2.properties
+     - ./elasticsearch/data/node_1:/usr/share/elasticsearch/data
+    networks:
+      es_net:
+        ipv4_address: 172.20.18.2
+
+  elastic_2:
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.2.3
+    environment:
+     - cluster.name=es_newprolab
+     - discovery.zen.minimum_master_nodes=1
+     - discovery.zen.ping.unicast.hosts=elastic_1
+    volumes:
+     - ./elasticsearch/log4j2.properties:/usr/share/elasticsearch/config/log4j2.properties
+     - ./elasticsearch/data/node_2:/usr/share/elasticsearch/data
+    links:
+     - elastic_1
+    networks:
+      es_net:
+        ipv4_address: 172.20.18.3
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:6.2.3
+    environment:
+     - ELASTICSEARCH_URL=http://elastic_1:9200
+     - XPACK_MONITORING_ENABLED=true
+    ports:
+     - 5601:5601
+    links:
+     - elastic_1
+     - elastic_2
+    networks:
+      es_net:
+        ipv4_address: 172.20.18.10
+
+  logstash:
+    build:
+      context: .
+      dockerfile: ./logstash/Dockerfile-logstash
+    environment:
+     - ELASTICSEARCH_URL=http://elastic_1:9200
+    volumes:
+     - ./logstash/pipeline/:/usr/share/logstash/pipeline
+     - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
+    links:
+     - elastic_1
+     - elastic_2
+    networks:
+      es_net:
+        ipv4_address: 172.20.18.20
+
+
+  fixture:
+    build:
+      context: ./fixture
+      dockerfile: Dockerfile
+    entrypoint: /fixture/sender
+    links:
+     - logstash
+     - redis
+    volumes:
+     - ./fixture/sender:/fixture/sender
+    environment:
+     - LOGSTASH_URL=http://logstash:80
+     - REDIS_HOST=redis
+    networks:
+      es_net:
+        ipv4_address: 172.20.18.30
+
+  fixture_order:
+    build:
+      context: ./fixture
+      dockerfile: Dockerfile
+    entrypoint: /fixture/server
+    links:
+     - redis
+    volumes:
+     - ./fixture/server:/fixture/server
+    environment:
+     - REDIS_HOST=redis
+    networks:
+      es_net:
+        ipv4_address: 172.20.18.31
+  
+  redis:
+    image: redis
+    volumes:
+     - ./fixture/redis_data:/data
+    networks:
+      es_net:
+        ipv4_address: 172.20.18.35
+
+networks:
+  es_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+    ipam:
+      driver: default
+      config:
+       - subnet: 172.20.18.0/24
